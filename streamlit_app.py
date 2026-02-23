@@ -1,10 +1,10 @@
 import streamlit as st
-from openai import OpenAI
+import openai
 
 st.set_page_config(page_title="DeepSeek AI 聊天", page_icon="🤖")
 st.title("🤖 DeepSeek AI 聊天机器人")
 
-# 侧边栏输入API Key
+# 侧边栏设置
 with st.sidebar:
     st.header("设置")
     api_key = st.text_input("DeepSeek API Key", type="password")
@@ -13,10 +13,19 @@ with st.sidebar:
     if st.button("检查连接"):
         if api_key:
             try:
-                client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1")
+                # 使用旧版API方式
+                openai.api_key = api_key
+                openai.api_base = "https://api.deepseek.com/v1"
+                
+                # 简单测试
+                response = openai.ChatCompletion.create(
+                    model="deepseek-chat",
+                    messages=[{"role": "user", "content": "ping"}],
+                    max_tokens=5
+                )
                 st.success("✅ 连接成功！")
-            except:
-                st.error("❌ 连接失败")
+            except Exception as e:
+                st.error(f"❌ 连接失败: {str(e)[:50]}...")
 
 # 初始化聊天历史
 if "messages" not in st.session_state:
@@ -43,17 +52,28 @@ if prompt := st.chat_input("说点什么..."):
         message_placeholder = st.empty()
         full_response = ""
         
-        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1")
-        response = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "system", "content": "你是一个友好的AI助手"}] + st.session_state.messages[-10:],
-            stream=True
-        )
+        try:
+            # 设置API
+            openai.api_key = api_key
+            openai.api_base = "https://api.deepseek.com/v1"
+            
+            # 准备消息历史
+            messages = [{"role": "system", "content": "你是一个友好的AI助手"}] + st.session_state.messages[-10:]
+            
+            # 调用API（非流式，避免兼容性问题）
+            response = openai.ChatCompletion.create(
+                model="deepseek-chat",
+                messages=messages,
+                stream=False,
+                temperature=0.7
+            )
+            
+            full_response = response.choices[0].message.content
+            message_placeholder.markdown(full_response)
+            
+        except Exception as e:
+            full_response = f"错误: {str(e)}"
+            message_placeholder.markdown(full_response)
         
-        for chunk in response:
-            if chunk.choices[0].delta.content:
-                full_response += chunk.choices[0].delta.content
-                message_placeholder.markdown(full_response + "▌")
-        
-        message_placeholder.markdown(full_response)
+        # 保存AI回复
         st.session_state.messages.append({"role": "assistant", "content": full_response})
